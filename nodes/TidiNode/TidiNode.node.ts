@@ -6,15 +6,16 @@ import type {
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
-export class ExampleNode implements INodeType {
+export class TidiNode implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Example Node',
-		name: 'exampleNode',
+		displayName: 'Tidi Node',
+		name: 'tidiNode',
+		icon: 'file:/tidi.svg',
 		group: ['transform'],
 		version: 1,
-		description: 'Basic Example Node',
+		description: 'Nós oficiais da plataforma de agendamentos Tidi.',
 		defaults: {
-			name: 'Example Node',
+			name: 'Tidi Node',
 		},
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
