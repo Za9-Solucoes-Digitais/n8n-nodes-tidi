@@ -3,6 +3,8 @@ import type {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
+	IHttpRequestMethods,
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
@@ -20,49 +22,255 @@ export class TidiNode implements INodeType {
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		usableAsTool: true,
-		properties: [
-			// Node properties which the user gets displayed and
-			// can change on the node.
+		credentials: [
 			{
-				displayName: 'My String',
-				name: 'myString',
+				name: 'tidiApi',
+				required: true,
+			},
+		],
+		properties: [
+			{
+				displayName: 'Operação',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				options: [
+					{
+						name: 'Obter Informações Do Parceiro',
+						value: 'getPartner',
+						description: 'Obtém informações do parceiro',
+						action: 'Obt m informa es do parceiro',
+					},
+					{
+						name: 'Listar Serviços',
+						value: 'getServices',
+						description: 'Lista todos os serviços do parceiro',
+						action: 'Lista todos os servi os do parceiro',
+					},
+					{
+						name: 'Listar Profissionais',
+						value: 'getProfessionals',
+						description: 'Lista todos os profissionais do parceiro',
+						action: 'Lista todos os profissionais do parceiro',
+					},
+					{
+						name: 'Verificar Disponibilidade',
+						value: 'checkAvailability',
+						description: 'Verifica disponibilidade na agenda',
+						action: 'Verifica disponibilidade na agenda',
+					},
+				],
+				default: 'getPartner',
+			},
+			{
+				displayName: 'Idioma',
+				name: 'language',
+				type: 'options',
+				options: [
+					{
+						name: 'Português',
+						value: 'pt',
+					},
+					{
+						name: 'Inglês',
+						value: 'en',
+					},
+				],
+				default: 'pt',
+				description: 'Idioma para a requisição',
+			},
+			// Campos específicos para verificar disponibilidade
+			{
+				displayName: 'ID Do Profissional',
+				name: 'professionalId',
 				type: 'string',
 				default: '',
-				placeholder: 'Placeholder value',
-				description: 'The description text',
+				placeholder: 'ID do profissional',
+				description: 'ID do profissional para verificar disponibilidade',
+				displayOptions: {
+					show: {
+						operation: ['checkAvailability'],
+					},
+				},
+			},
+			{
+				displayName: 'Serviços',
+				name: 'services',
+				type: 'string',
+				default: '',
+				placeholder: '["serviceId1", "serviceId2"]',
+				description: 'Array JSON com IDs dos serviços',
+				displayOptions: {
+					show: {
+						operation: ['checkAvailability'],
+					},
+				},
+			},
+			// Campos opcionais para filtros
+			{
+				displayName: 'Filtros Adicionais',
+				name: 'additionalFilters',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				options: [
+					{
+						name: 'filters',
+						displayName: 'Filtro',
+						values: [
+							{
+								displayName: 'Nome Do Campo',
+								name: 'key',
+								type: 'string',
+								default: '',
+								description: 'Nome do campo para filtrar',
+							},
+							{
+								displayName: 'Valor',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Valor do filtro',
+							},
+						],
+					},
+				],
+				displayOptions: {
+					show: {
+						operation: ['getServices', 'getProfessionals'],
+					},
+				},
 			},
 		],
 	};
 
-	// The function below is responsible for actually doing whatever this node
-	// is supposed to do. In this case, we're just appending the `myString` property
-	// with whatever the user has entered.
-	// You can make async calls and use `await`.
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
+		const returnData: INodeExecutionData[] = [];
 
-		let item: INodeExecutionData;
-		let myString: string;
-
-		// Iterates over all input items and add the key "myString" with the
-		// value the parameter "myString" resolves to.
-		// (This could be a different value for each item in case it contains an expression)
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			try {
-				myString = this.getNodeParameter('myString', itemIndex, '') as string;
-				item = items[itemIndex];
+				const operation = this.getNodeParameter('operation', itemIndex) as string;
+				const language = this.getNodeParameter('language', itemIndex, 'pt') as string;
 
-				item.json.myString = myString;
+				// Obter credenciais
+				const credentials = await this.getCredentials('tidiApi', itemIndex);
+				const apiKey = credentials.apiKey as string;
+
+				const baseUrl = 'https://api.tidi.com.br';
+
+				let endpoint = '';
+				let method: IHttpRequestMethods = 'GET';
+				let body: any = undefined;
+				let queryParams: Record<string, any> = {};
+
+				// Configurar endpoint baseado na operação
+				switch (operation) {
+					case 'getPartner':
+						endpoint = `/${language}/integration/partner`;
+						break;
+
+					case 'getServices':
+						endpoint = `/${language}/integration/partner/services`;
+						// Adicionar filtros se especificados
+						const serviceFilters = this.getNodeParameter('additionalFilters', itemIndex, {}) as any;
+						if (serviceFilters.filters) {
+							serviceFilters.filters.forEach((filter: any) => {
+								if (filter.key && filter.value) {
+									queryParams[filter.key] = filter.value;
+								}
+							});
+						}
+						break;
+
+					case 'getProfessionals':
+						endpoint = `/${language}/integration/partner/professionals`;
+						// Adicionar filtros se especificados
+						const professionalFilters = this.getNodeParameter('additionalFilters', itemIndex, {}) as any;
+						if (professionalFilters.filters) {
+							professionalFilters.filters.forEach((filter: any) => {
+								if (filter.key && filter.value) {
+									queryParams[filter.key] = filter.value;
+								}
+							});
+						}
+						break;
+
+					case 'checkAvailability':
+						endpoint = `/${language}/integration/partner/schedule/availability`;
+						method = 'POST' as IHttpRequestMethods;
+						const professionalId = this.getNodeParameter('professionalId', itemIndex, '') as string;
+						const servicesParam = this.getNodeParameter('services', itemIndex, '') as string;
+
+						body = {
+							professional: professionalId,
+							services: servicesParam,
+						};
+						break;
+
+					default:
+						throw new NodeOperationError(this.getNode(), `Operação desconhecida: ${operation}`, {
+							itemIndex,
+						});
+				}
+
+				// Configurar opções da requisição HTTP
+				const options: IHttpRequestOptions = {
+					method,
+					url: `${baseUrl}${endpoint}`,
+					headers: {
+						'x-api-key': apiKey,
+						'Content-Type': 'application/json',
+					},
+					json: true,
+				};
+
+				// Adicionar query parameters se existirem
+				if (Object.keys(queryParams).length > 0) {
+					options.qs = queryParams;
+				}
+
+				// Adicionar body se for POST
+				if (body) {
+					options.body = body;
+				}
+
+				// Fazer a requisição HTTP
+				const response = await this.helpers.httpRequest(options);
+
+				// Adicionar dados de resposta ao item
+				const newItem: INodeExecutionData = {
+					json: {
+						operation,
+						success: true,
+						data: response,
+						metadata: {
+							endpoint,
+							method,
+							timestamp: new Date().toISOString(),
+						},
+					},
+					pairedItem: itemIndex,
+				};
+
+				returnData.push(newItem);
+
 			} catch (error) {
-				// This node should never fail but we want to showcase how
-				// to handle errors.
 				if (this.continueOnFail()) {
-					items.push({ json: this.getInputData(itemIndex)[0].json, error, pairedItem: itemIndex });
+					returnData.push({
+						json: {
+							operation: this.getNodeParameter('operation', itemIndex, 'unknown'),
+							success: false,
+							error: error.message,
+							timestamp: new Date().toISOString(),
+						},
+						error,
+						pairedItem: itemIndex,
+					});
 				} else {
-					// Adding `itemIndex` allows other workflows to handle this error
 					if (error.context) {
-						// If the error thrown already contains the context property,
-						// only append the itemIndex
 						error.context.itemIndex = itemIndex;
 						throw error;
 					}
@@ -73,6 +281,6 @@ export class TidiNode implements INodeType {
 			}
 		}
 
-		return [items];
+		return [returnData];
 	}
 }
