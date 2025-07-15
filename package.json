@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-tidi-v1",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Nós customizados para facilitar a integração com a plataforma de agendamento de serviços Tidi.",
   "keywords": [
     "n8n-community-node-package"
