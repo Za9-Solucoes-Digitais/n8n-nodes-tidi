@@ -7,6 +7,8 @@ import type {
 	IHttpRequestMethods,
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+// @ts-ignore
+import { URLSearchParams } from 'url';
 
 export class TidiNode implements INodeType {
 	description: INodeTypeDescription = {
@@ -36,10 +38,16 @@ export class TidiNode implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
-						name: 'Obter Informações Do Parceiro',
-						value: 'getPartner',
-						description: 'Obtém informações do parceiro',
-						action: 'Obt m informa es do parceiro',
+						name: 'Agendar Horário',
+						value: 'schedule',
+						description: 'Realiza um agendamento de horário',
+						action: 'Agendar horario',
+					},
+					{
+						name: 'Listar Profissionais',
+						value: 'getProfessionals',
+						description: 'Lista todos os profissionais do parceiro',
+						action: 'Lista todos os profissionais do parceiro',
 					},
 					{
 						name: 'Listar Serviços',
@@ -48,10 +56,10 @@ export class TidiNode implements INodeType {
 						action: 'Lista todos os servi os do parceiro',
 					},
 					{
-						name: 'Listar Profissionais',
-						value: 'getProfessionals',
-						description: 'Lista todos os profissionais do parceiro',
-						action: 'Lista todos os profissionais do parceiro',
+						name: 'Obter Informações Do Parceiro',
+						value: 'getPartner',
+						description: 'Obtém informações do parceiro',
+						action: 'Obt m informa es do parceiro',
 					},
 					{
 						name: 'Verificar Disponibilidade',
@@ -143,6 +151,98 @@ export class TidiNode implements INodeType {
 					},
 				},
 			},
+			// Adicionar campos específicos para agendamento
+			{
+				displayName: 'Dia',
+				name: 'day',
+				type: 'string',
+				default: '',
+				placeholder: '2025-08-22',
+				description: 'Dia do agendamento (YYYY-MM-DD)',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
+			{
+				displayName: 'Hora',
+				name: 'hour',
+				type: 'string',
+				default: '',
+				placeholder: '10:00',
+				description: 'Hora do agendamento (HH:mm)',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
+			{
+				displayName: 'ID Do Profissional',
+				name: 'professional',
+				type: 'string',
+				default: '',
+				placeholder: 'ID do profissional',
+				description: 'ID do profissional para o agendamento',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
+			{
+				displayName: 'Serviços',
+				name: 'services',
+				type: 'string',
+				default: '',
+				placeholder: '["serviceId1"]',
+				description: 'Array JSON com IDs dos serviços',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
+			{
+				displayName: 'Nome',
+				name: 'name',
+				type: 'string',
+				default: '',
+				placeholder: 'Nome do cliente',
+				description: 'Nome do cliente',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
+			{
+				displayName: 'Email',
+				name: 'email',
+				type: 'string',
+				default: '',
+				placeholder: 'cliente@email.com',
+				description: 'Email do cliente',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
+			{
+				displayName: 'Telefone',
+				name: 'phone',
+				type: 'string',
+				default: '',
+				placeholder: '31999999999',
+				description: 'Telefone do cliente',
+				displayOptions: {
+					show: {
+						operation: ['schedule'],
+					},
+				},
+			},
 		],
 	};
 
@@ -165,6 +265,8 @@ export class TidiNode implements INodeType {
 				let method: IHttpRequestMethods = 'GET';
 				let body: any = undefined;
 				let queryParams: Record<string, any> = {};
+                let contentType: string | undefined = undefined;
+                let isJson: boolean | undefined = undefined;
 
 				// Configurar endpoint baseado na operação
 				switch (operation) {
@@ -210,6 +312,22 @@ export class TidiNode implements INodeType {
 						};
 						break;
 
+					case 'schedule':
+						endpoint = `/${language}/integration/partner/schedule`;
+						method = 'POST' as IHttpRequestMethods;
+						body = {
+							day: this.getNodeParameter('day', itemIndex, '') as string,
+							hour: this.getNodeParameter('hour', itemIndex, '') as string,
+							professional: this.getNodeParameter('professional', itemIndex, '') as string,
+							services: this.getNodeParameter('services', itemIndex, '') as string,
+							name: this.getNodeParameter('name', itemIndex, '') as string,
+							email: this.getNodeParameter('email', itemIndex, '') as string,
+							phone: this.getNodeParameter('phone', itemIndex, '') as string,
+						};
+                        contentType = 'application/x-www-form-urlencoded';
+                        isJson = false;
+						break;
+
 					default:
 						throw new NodeOperationError(this.getNode(), `Operação desconhecida: ${operation}`, {
 							itemIndex,
@@ -222,9 +340,9 @@ export class TidiNode implements INodeType {
 					url: `${baseUrl}${endpoint}`,
 					headers: {
 						'x-api-key': apiKey,
-						'Content-Type': 'application/json',
+						'Content-Type': contentType || 'application/json',
 					},
-					json: true,
+					json: isJson !== undefined ? isJson : true,
 				};
 
 				// Adicionar query parameters se existirem
@@ -234,7 +352,11 @@ export class TidiNode implements INodeType {
 
 				// Adicionar body se for POST
 				if (body) {
-					options.body = body;
+                    if (contentType === 'application/x-www-form-urlencoded') {
+                        options.body = new URLSearchParams(body).toString();
+                    } else {
+					    options.body = body;
+                    }
 				}
 
 				// Fazer a requisição HTTP
@@ -264,6 +386,7 @@ export class TidiNode implements INodeType {
 							operation: this.getNodeParameter('operation', itemIndex, 'unknown'),
 							success: false,
 							error: error.message,
+							errorData: error.response && error.response.body ? error.response.body : undefined,
 							timestamp: new Date().toISOString(),
 						},
 						error,
@@ -273,6 +396,11 @@ export class TidiNode implements INodeType {
 					if (error.context) {
 						error.context.itemIndex = itemIndex;
 						throw error;
+					}
+					if (error.response && error.response.body) {
+						throw new NodeOperationError(this.getNode(), `${error.message} | Detalhe: ${JSON.stringify(error.response.body)}`, {
+							itemIndex,
+						});
 					}
 					throw new NodeOperationError(this.getNode(), error, {
 						itemIndex,
